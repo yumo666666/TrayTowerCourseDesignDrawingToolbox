@@ -47,23 +47,41 @@
 
 ## 使用截图 (Screenshots)
 
-### 主界面
 ![主界面](images/1.png)
-
-### 管理员面板 (设置时间限制)
 ![管理员面板](images/2.png)
-
-### 图解法求理论板数
 ![图解法](images/3.png)
-
-### 塔板负荷性能图
 ![负荷性能图](images/4.png)
-
-### 板式塔结构简图
 ![结构简图](images/5.png)
-
-### 阀孔实际阀孔数
 ![阀孔排布](images/6.png)
+
+## 开发指南 (Apps Development Guide)
+
+如果你想向本工具箱添加新的应用程序，请遵循以下规范：
+
+1.  **目录结构**:
+    *   在 `apps/` 目录下创建一个新的文件夹，例如 `apps/MyApp/`。
+    *   主程序脚本必须与文件夹同名，例如 `apps/MyApp/MyApp.py`。
+
+2.  **主程序要求 (`MyApp.py`)**:
+    *   必须使用 `tkinter` 作为 GUI 框架。
+    *   必须包含一个 `if __name__ == "__main__":` 块来启动程序，通常是创建一个 `tk.Tk()` 根窗口并进入主循环。
+    *   建议在初始化时调用 `root.state('zoomed')` 或 `root.attributes('-fullscreen', True)` 以保持全屏体验一致性。
+
+3.  **配置文件**:
+    *   **预览图**: 在应用目录下放置 `example.png` (建议 380x240 像素)，主界面会自动加载作为封面。
+    *   **示例参数**: 创建 `example.json` 存储默认/示例参数，并在程序中实现“重置为示例参数”功能。
+    *   **文件管理配置** (可选): 如果应用需要管理外部文件（如 Excel 数据），请创建 `file_config.json`：
+        ```json
+        {
+            "has_files": true,
+            "path": "./data"
+        }
+        ```
+        这将自动在主界面启用“编辑文件”按钮。
+
+4.  **依赖管理**:
+    *   尽量使用 `requirements.txt` 中已有的库。
+    *   如果引入新库，请确保在 `main.py` 的 Dummy Imports 部分添加引用，以便 PyInstaller 正确打包。
 
 ## 开发环境 (Development)
 
