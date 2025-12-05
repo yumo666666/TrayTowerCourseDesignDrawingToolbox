@@ -1,0 +1,9 @@
+matplotlib
+pandas
+numpy
+scipy
+openpyxl
+requests
+pytz
+Pillow
+pyinstaller

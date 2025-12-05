@@ -1,0 +1,14 @@
+{
+    "system_selection": "\u7532\u9187-\u6c34.xlsx",
+    "rect_slope": 0.483,
+    "rect_intercept": 0.494,
+    "strip_slope": 2.512,
+    "strip_intercept": -0.04388,
+    "xD": 0.956,
+    "xF": 0.264,
+    "xW": 0.029,
+    "plot_font_scale": 2.0,
+    "lw_steps": 0.8,
+    "lw_main": 1.5,
+    "lw_vertical": 0.8
+}
