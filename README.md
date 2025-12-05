@@ -47,12 +47,13 @@
 
 ## 使用截图 (Screenshots)
 
-![主界面](images/1.png)
-![管理员面板](images/2.png)
-![图解法](images/3.png)
-![负荷性能图](images/4.png)
-![结构简图](images/5.png)
-![阀孔排布](images/6.png)
+|  |  |
+| :---: | :---: |
+| ![主界面](images/1.png) | ![管理员面板](images/2.png) |
+|  |  |
+| ![图解法](images/3.png) | ![负荷性能图](images/4.png) |
+|  |  |
+| ![结构简图](images/5.png) | ![阀孔排布](images/6.png) |
 
 ## 开发指南 (Apps Development Guide)
 
@@ -79,9 +80,13 @@
         ```
         这将自动在主界面启用“编辑文件”按钮。
 
-4.  **依赖管理**:
-    *   尽量使用 `requirements.txt` 中已有的库。
-    *   如果引入新库，请确保在 `main.py` 的 Dummy Imports 部分添加引用，以便 PyInstaller 正确打包。
+5.  **主界面自动排布 (Auto-Layout)**:
+    *   主界面 `main.py` 会自动扫描 `apps/` 目录下的所有合法应用。
+    *   **布局逻辑**: 
+        *   系统自动将应用分为**两排**显示。
+        *   如果应用总数是**偶数**，则上下两排数量相等。
+        *   如果应用总数是**奇数**，则第一排比第二排多一个应用。
+        *   无需手动配置坐标，只需确保文件夹和主程序命名规范，系统会自动计算并渲染。
 
 ## 开发环境 (Development)
 
