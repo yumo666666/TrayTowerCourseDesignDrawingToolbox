@@ -1,4 +1,5 @@
 @echo off
+chcp 65001
 setlocal
 
 :: 设置虚拟环境名称
