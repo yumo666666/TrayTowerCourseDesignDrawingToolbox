@@ -1,66 +1,66 @@
 @echo off
 setlocal
 
-:: ÉèÖÃÐéÄâ»·¾³Ãû³Æ
+:: è®¾ç½®è™šæ‹ŸçŽ¯å¢ƒåç§°
 set VENV_NAME=venv
 
-:: ¼ì²éÐéÄâ»·¾³ÊÇ·ñ´æÔÚ
+:: æ£€æŸ¥è™šæ‹ŸçŽ¯å¢ƒæ˜¯å¦å­˜åœ¨
 if not exist %VENV_NAME% (
-    echo [INFO] ÐéÄâ»·¾³Î´ÕÒµ½£¬ÕýÔÚ´´½¨...
+    echo [INFO] è™šæ‹ŸçŽ¯å¢ƒæœªæ‰¾åˆ°ï¼Œæ­£åœ¨åˆ›å»º...
     python -m venv %VENV_NAME%
     if errorlevel 1 (
-        echo [ERROR] ´´½¨ÐéÄâ»·¾³Ê§°Ü£¬ÇëÈ·±£ÒÑ°²×° Python ²¢Ìí¼Óµ½ PATH¡£
+        echo [ERROR] åˆ›å»ºè™šæ‹ŸçŽ¯å¢ƒå¤±è´¥ï¼Œè¯·ç¡®ä¿å·²å®‰è£… Python å¹¶æ·»åŠ åˆ° PATHã€‚
         pause
         exit /b 1
     )
-    echo [INFO] ÐéÄâ»·¾³´´½¨³É¹¦¡£
+    echo [INFO] è™šæ‹ŸçŽ¯å¢ƒåˆ›å»ºæˆåŠŸã€‚
 ) else (
-    echo [INFO] ¼ì²âµ½ÏÖÓÐÐéÄâ»·¾³¡£
+    echo [INFO] æ£€æµ‹åˆ°çŽ°æœ‰è™šæ‹ŸçŽ¯å¢ƒã€‚
 )
 
-:: ¼¤»îÐéÄâ»·¾³
+:: æ¿€æ´»è™šæ‹ŸçŽ¯å¢ƒ
 call %VENV_NAME%\Scripts\activate
 if errorlevel 1 (
-    echo [ERROR] ÎÞ·¨¼¤»îÐéÄâ»·¾³¡£
+    echo [ERROR] æ— æ³•æ¿€æ´»è™šæ‹ŸçŽ¯å¢ƒã€‚
     pause
     exit /b 1
 )
 
-:: Éý¼¶ pip
-echo [INFO] ÕýÔÚÉý¼¶ pip...
+:: å‡çº§ pip
+echo [INFO] æ­£åœ¨å‡çº§ pip...
 python -m pip install --upgrade pip
 
-:: °²×°ÒÀÀµ
+:: å®‰è£…ä¾èµ–
 if exist requirement.txt (
-    echo [INFO] ÕýÔÚ°²×°ÒÀÀµ...
+    echo [INFO] æ­£åœ¨å®‰è£…ä¾èµ–...
     pip install -r requirement.txt
     if errorlevel 1 (
-        echo [ERROR] ÒÀÀµ°²×°Ê§°Ü¡£
+        echo [ERROR] ä¾èµ–å®‰è£…å¤±è´¥ã€‚
         pause
         exit /b 1
     )
 ) else (
-    echo [WARNING] Î´ÕÒµ½ requirement.txt£¬Ìø¹ýÒÀÀµ°²×°¡£
+    echo [WARNING] æœªæ‰¾åˆ° requirement.txtï¼Œè·³è¿‡ä¾èµ–å®‰è£…ã€‚
 )
 
-:: Ö´ÐÐ´ò°ü
-echo [INFO] ¿ªÊ¼´ò°ü½ÌÊ¦°æ...
+:: æ‰§è¡Œæ‰“åŒ…
+echo [INFO] å¼€å§‹æ‰“åŒ…æ•™å¸ˆç‰ˆ...
 pyinstaller --noconfirm -F -w -i "icon.ico" ^
-    --name "°åÊ½Ëþ¿ÎÉè¹¤¾ßÏä_½ÌÊ¦°æ" ^
+    --name "æ¿å¼å¡”è¯¾è®¾å·¥å…·ç®±_æ•™å¸ˆç‰ˆ" ^
     --add-data "apps;apps" ^
     --add-data "features;features" ^
     main.py
 
 if errorlevel 1 (
-    echo [ERROR] ´ò°üÊ§°Ü¡£
+    echo [ERROR] æ‰“åŒ…å¤±è´¥ã€‚
     pause
     exit /b 1
 )
 
 echo.
 echo ==========================================
-echo [SUCCESS] ´ò°üÍê³É£¡
-echo ÎÄ¼þÎ»ÖÃ: dist\°åÊ½Ëþ¿ÎÉè¹¤¾ßÏä_½ÌÊ¦°æ.exe
+echo [SUCCESS] æ‰“åŒ…å®Œæˆï¼
+echo æ–‡ä»¶ä½ç½®: dist\æ¿å¼å¡”è¯¾è®¾å·¥å…·ç®±_æ•™å¸ˆç‰ˆ.exe
 echo ==========================================
 echo.
 
