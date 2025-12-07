@@ -7,6 +7,10 @@ import subprocess
 from PIL import Image, ImageTk
 from datetime import datetime
 import shutil
+import zipfile
+import tempfile
+import io
+import atexit
 
 # --- 1. Dummy Imports for PyInstaller ---
 try:
@@ -34,6 +38,7 @@ APPS_DIR = os.path.join(current_dir, 'apps')
 
 # Magic Separator for Overlay
 OVERLAY_SEPARATOR = b'<<<STUDENT_CONFIG_START>>>'
+APPS_ZIP_SEPARATOR = b'<<<APPS_ZIP_START>>>'
 
 class LauncherApp:
     def __init__(self, root):
@@ -44,6 +49,10 @@ class LauncherApp:
         # Determine Mode
         self.mode_data = self.load_mode_from_overlay()
         self.is_student = self.mode_data.get("mode") == "student"
+
+        # Prepare Environment (Persistence/Extraction)
+        self.prepare_apps_environment()
+
         self.running_processes = []  # Track subprocesses
         
         self.setup_ui()
@@ -52,15 +61,157 @@ class LauncherApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
     def on_closing(self):
-        # Terminate all tracked subprocesses
+        # 1. Terminate all tracked subprocesses
         for p in self.running_processes:
             if p.poll() is None:  # If still running
                 try:
                     p.terminate()
                 except:
                     pass
+        
+        # 2. Cleanup Temp Files (Student Mode)
+        if hasattr(self, 'temp_apps_dir') and self.temp_apps_dir:
+            # Sync Configs: Export configs to local before cleanup
+            try:
+                self.sync_student_configs(direction='export')
+            except Exception:
+                pass
+                
+            try:
+                shutil.rmtree(self.temp_apps_dir, ignore_errors=True)
+            except Exception:
+                pass
+
         self.root.destroy()
         sys.exit(0)
+
+    def prepare_apps_environment(self):
+        """
+        Setup APPS_DIR based on mode and environment.
+        Teacher (Frozen): Use local 'apps' folder for persistence.
+        Student (Frozen): Use temp folder extracted from overlay ZIP.
+        """
+        global APPS_DIR
+        
+        # Only needed if frozen (EXE)
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+            
+            if self.is_student:
+                # Student Mode: Check for embedded zip
+                zip_data = self.load_zip_from_overlay()
+                if zip_data:
+                    try:
+                        # Extract to temp dir
+                        self.temp_apps_dir = tempfile.mkdtemp(prefix="bt_apps_")
+                        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+                            zf.extractall(self.temp_apps_dir)
+                        
+                        APPS_DIR = self.temp_apps_dir
+                        # Register cleanup
+                        atexit.register(shutil.rmtree, self.temp_apps_dir, ignore_errors=True)
+                        
+                        # Sync Configs: Import local configs if they exist
+                        self.sync_student_configs(direction='import')
+                        
+                    except Exception as e:
+                        print(f"Error extracting apps: {e}")
+                        # Fallback to internal
+                        APPS_DIR = os.path.join(sys._MEIPASS, 'apps')
+                else:
+                    # No zip, use default internal
+                    APPS_DIR = os.path.join(sys._MEIPASS, 'apps')
+            else:
+                # Teacher Mode: Use local directory for persistence
+                local_apps_dir = os.path.join(exe_dir, 'apps')
+                internal_apps_dir = os.path.join(sys._MEIPASS, 'apps')
+                
+                # If local apps dir doesn't exist, copy from internal
+                if not os.path.exists(local_apps_dir):
+                    try:
+                        shutil.copytree(internal_apps_dir, local_apps_dir)
+                    except Exception as e:
+                        messagebox.showerror("初始化错误", f"无法创建本地数据目录:\n{e}")
+                        # Fallback
+                        APPS_DIR = internal_apps_dir
+                        return
+
+                APPS_DIR = local_apps_dir
+
+    def sync_student_configs(self, direction='import'):
+        """
+        Sync config.json between temp dir and local apps dir for persistence.
+        direction: 'import' (Local -> Temp) or 'export' (Temp -> Local)
+        """
+        if not self.is_student or not hasattr(self, 'temp_apps_dir'):
+            return
+
+        exe_dir = os.path.dirname(sys.executable)
+        local_apps_root = os.path.join(exe_dir, 'apps')
+        
+        # We only care about config.json
+        target_file = "config.json"
+
+        try:
+            # Iterate through apps in the temp directory (source of truth for app structure)
+            if not os.path.exists(self.temp_apps_dir):
+                return
+                
+            for app_name in os.listdir(self.temp_apps_dir):
+                temp_app_path = os.path.join(self.temp_apps_dir, app_name)
+                local_app_path = os.path.join(local_apps_root, app_name)
+                
+                if not os.path.isdir(temp_app_path):
+                    continue
+                    
+                temp_config = os.path.join(temp_app_path, target_file)
+                local_config = os.path.join(local_app_path, target_file)
+                
+                if direction == 'import':
+                    # Local -> Temp (Overwrite temp with user saved config)
+                    if os.path.exists(local_config):
+                        try:
+                            shutil.copy2(local_config, temp_config)
+                        except Exception:
+                            pass
+                            
+                elif direction == 'export':
+                    # Temp -> Local (Save current config to local)
+                    if os.path.exists(temp_config):
+                        try:
+                            if not os.path.exists(local_app_path):
+                                os.makedirs(local_app_path)
+                            shutil.copy2(temp_config, local_config)
+                        except Exception:
+                            pass
+                            
+        except Exception as e:
+            print(f"Config sync error ({direction}): {e}")
+
+    def load_zip_from_overlay(self):
+        if not getattr(sys, 'frozen', False):
+            return None
+            
+        try:
+            with open(sys.executable, 'rb') as f:
+                content = f.read()
+                
+            if APPS_ZIP_SEPARATOR in content:
+                parts = content.split(APPS_ZIP_SEPARATOR)
+                if len(parts) > 1:
+                    # The zip data starts after the separator
+                    data_chunk = parts[-1]
+                    
+                    # And ends before OVERLAY_SEPARATOR if present
+                    if OVERLAY_SEPARATOR in data_chunk:
+                        zip_bytes = data_chunk.split(OVERLAY_SEPARATOR)[0]
+                    else:
+                        zip_bytes = data_chunk
+                        
+                    return zip_bytes
+        except Exception:
+            pass
+        return None
 
     def load_mode_from_overlay(self):
         """
@@ -128,6 +279,10 @@ class LauncherApp:
         apps = sorted(os.listdir(APPS_DIR))
         valid_apps = []
         for app_name in apps:
+            # 学生版屏蔽示例应用
+            if self.is_student and app_name == "示例应用":
+                continue
+
             app_path = os.path.join(APPS_DIR, app_name)
             script_path = os.path.join(app_path, f"{app_name}.py")
             if os.path.isdir(app_path) and os.path.exists(script_path):
@@ -430,28 +585,20 @@ class LauncherApp:
             if os.path.isdir(app_path):
                 valid_apps.append(app_name)
 
-        num_apps = len(valid_apps)
-        if num_apps == 1:
-            row1_count = 1
-            row2_count = 0
-        else:
-            row1_count = (num_apps + 1) // 2
-            row2_count = num_apps - row1_count
+        # Apps Grid Container
+        grid_frame = tk.Frame(scroll_frame)
+        grid_frame.pack(fill="x", padx=10)
 
-        # Create Frames for Rows
-        row1_frame = tk.Frame(scroll_frame)
-        row1_frame.pack(fill="x", pady=20, expand=True)
+        num_apps = len(valid_apps)
         
-        if row2_count > 0:
-            row2_frame = tk.Frame(scroll_frame)
-            row2_frame.pack(fill="x", pady=20, expand=True)
-        else:
-            row2_frame = None
+        # Grid Configuration: 2 columns
+        grid_frame.columnconfigure(0, weight=1)
+        grid_frame.columnconfigure(1, weight=1)
 
         # Helper to create setting card
         def create_setting_card(app_name, parent, row, col):
             container = tk.Frame(parent)
-            container.grid(row=row, column=col, sticky="nsew", padx=20, pady=10)
+            container.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
             
             frame = tk.LabelFrame(container, text=app_name, padx=10, pady=10, font=("bold", 11))
             frame.pack(fill="both", expand=True)
@@ -462,7 +609,7 @@ class LauncherApp:
             tk.Label(f_start, text="开始:", width=5, anchor="w").pack(side="left")
             start_entry = tk.Entry(f_start, width=18)
             start_entry.insert(0, existing_limits.get(app_name, {}).get("start", datetime.now().strftime("%Y-%m-%d %H:%M")))
-            start_entry.pack(side="left", padx=5)
+            start_entry.pack(side="left", padx=5, fill="x", expand=True)
             
             # End
             f_end = tk.Frame(frame)
@@ -470,26 +617,17 @@ class LauncherApp:
             tk.Label(f_end, text="结束:", width=5, anchor="w").pack(side="left")
             end_entry = tk.Entry(f_end, width=18)
             end_entry.insert(0, existing_limits.get(app_name, {}).get("end", "2025-12-31 23:59"))
-            end_entry.pack(side="left", padx=5)
+            end_entry.pack(side="left", padx=5, fill="x", expand=True)
             
             self.limit_entries[app_name] = (start_entry, end_entry)
 
-        # Populate Row 1
-        for i in range(row1_count):
-            app_name = valid_apps[i]
-            row1_frame.grid_columnconfigure(i, weight=1)
-            create_setting_card(app_name, row1_frame, 0, i)
+        # Populate Grid (2 per row)
+        for i, app_name in enumerate(valid_apps):
+            row = i // 2
+            col = i % 2
+            create_setting_card(app_name, grid_frame, row, col)
 
-        # Populate Row 2
-        if row2_frame:
-            for j in range(row1_count):
-                row2_frame.grid_columnconfigure(j, weight=1)
-            for i in range(row2_count):
-                app_idx = row1_count + i
-                app_name = valid_apps[app_idx]
-                create_setting_card(app_name, row2_frame, 0, i)
-
-        btn_frame = tk.Frame(win, pady=20)
+        btn_frame = tk.Frame(win, pady=20, bg="#f0f0f0") # Add background to match typical dialog style if needed, or keep default
         btn_frame.pack(side="bottom", fill="x")
         
         tk.Button(btn_frame, text="导出学生版 EXE", command=self.do_export_student_exe, 
@@ -543,29 +681,50 @@ class LauncherApp:
             return
 
         try:
-            # 3. Read current EXE content
+            # 3. Create ZIP from current APPS_DIR (Persistence Support)
+            zip_buffer = io.BytesIO()
+            # Ensure we are zipping the correct directory (APPS_DIR global should be set)
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, dirs, files in os.walk(APPS_DIR):
+                    # 排除示例应用，防止其被打包进学生版
+                    if root == APPS_DIR and "示例应用" in dirs:
+                        dirs.remove("示例应用")
+
+                    for file in files:
+                        abs_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(abs_path, APPS_DIR)
+                        zf.write(abs_path, rel_path)
+            zip_bytes = zip_buffer.getvalue()
+
+            # 4. Read current EXE content (Clean part)
             current_exe_path = sys.executable
             with open(current_exe_path, 'rb') as f:
                 exe_content = f.read()
                 
-            # Check if current EXE already has overlay
-            if OVERLAY_SEPARATOR in exe_content:
-                # Strip existing overlay to avoid stacking
-                exe_content = exe_content.split(OVERLAY_SEPARATOR)[0]
+            # Strip existing overlays (both ZIP and JSON)
+            idx_zip = exe_content.find(APPS_ZIP_SEPARATOR)
+            idx_conf = exe_content.find(OVERLAY_SEPARATOR)
             
-            # 4. Append Config
+            cut_pos = len(exe_content)
+            if idx_zip != -1:
+                cut_pos = min(cut_pos, idx_zip)
+            if idx_conf != -1:
+                cut_pos = min(cut_pos, idx_conf)
+                
+            clean_exe_content = exe_content[:cut_pos]
+            
+            # 5. Append Config and ZIP
+            # Structure: [EXE] [APPS_ZIP_SEPARATOR] [ZIP] [OVERLAY_SEPARATOR] [JSON]
             with open(save_path, 'wb') as f:
-                f.write(exe_content)
+                f.write(clean_exe_content)
+                f.write(APPS_ZIP_SEPARATOR)
+                f.write(zip_bytes)
                 f.write(OVERLAY_SEPARATOR)
                 f.write(json_bytes)
                 
-            messagebox.showinfo("成功", f"学生版 EXE 已成功导出至:\n{save_path}\n\n学生运行该文件时将自动应用时间限制。")
+            messagebox.showinfo("成功", f"学生版 EXE 已成功导出至:\n{save_path}\n\n该版本已包含当前最新的应用数据。")
             
-            # 5. Close Admin Panel (Wait for window to be destroyed safely)
-            # Find the toplevel window that contains the button that called this
-            # Since we are in the main app class, we might not have direct reference to 'win' variable here
-            # But we can iterate through root's children or just keep track of it.
-            # A simpler way: iterate Toplevels
+            # 6. Close Admin Panel
             for widget in self.root.winfo_children():
                 if isinstance(widget, Toplevel) and widget.title().startswith("管理员面板"):
                     widget.destroy()

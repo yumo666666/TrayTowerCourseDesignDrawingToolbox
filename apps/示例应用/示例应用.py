@@ -1,13 +1,11 @@
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, Menu, messagebox
-import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 import numpy as np
-from scipy.interpolate import interp1d
 import json
 import os
 import sys
@@ -15,31 +13,29 @@ import sys
 # --- 全局配置 ---
 # 获取当前脚本所在目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
 # 配置文件路径
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
-DEFAULT_CONFIG_FILE = os.path.join(BASE_DIR, 'default_config.json') # 使用 example.json 作为默认配置源
+DEFAULT_CONFIG_FILE = os.path.join(BASE_DIR, 'default_config.json')
 
 # 生成图片的像素配置
-IMG_WIDTH = 5760
-IMG_HEIGHT = 5760
-IMG_DPI = 300
+IMG_WIDTH = 1920
+IMG_HEIGHT = 1920
+IMG_DPI = 300  # DPI 保持 100 方便计算，实际尺寸由 WIDTH/HEIGHT 决定
 
-# 代码中的硬编码默认值
+# 代码中的硬编码默认值 (防止文件丢失)
 HARDCODED_DEFAULTS = {
-    "current_mode": "", # 默认为空，自动选择第一个文件
-    "default_params": { # 用于初始化新文件的参数
-        "rect_slope": "0.53",
-        "rect_intercept": "0.44",
-        "strip_slope": "1.1",
-        "strip_intercept": "-0.05",
-        "xD": "0.95",
-        "xF": "0.45",
-        "xW": "0.05",
-        "plot_font_scale": "2.0",
-        "lw_main": "1.5",
-        "lw_steps": "0.8",
-        "lw_vertical": "0.8"
+    "current_mode": "mode_a",
+    "mode_a": {
+        "title": "模式A - 椭圆",
+        "param_a": "100",
+        "param_b": "50",
+        "show_grid": "1"
+    },
+    "mode_b": {
+        "title": "模式B - 螺旋线",
+        "param_a": "10",
+        "param_b": "2",
+        "show_grid": "1"
     }
 }
 
@@ -51,22 +47,14 @@ try:
 except:
     CHINESE_FONT = 'Arial'
 
-def get_available_excel_files():
-    """扫描 DATA_DIR 获取所有 .xlsx 文件名，并返回列表。"""
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
-        return []
-    files = [f for f in os.listdir(DATA_DIR) if f.endswith('.xlsx')]
-    return files
-
-class DistillationApp:
+class StandardApp:
     """
-    图解法求理论板数应用程序
-    基于 StandardApp 模板重构
+    标准应用程序模板类
+    用于规范化所有子程序的结构
     """
     def __init__(self, root):
         self.root = root
-        self.root.title("图解法求理论板数")
+        self.root.title("标准示例程序") # TODO: 修改标题
         
         # === 窗口设置 ===
         try:
@@ -77,21 +65,16 @@ class DistillationApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # === 数据初始化 ===
-        self.excel_files = get_available_excel_files()
         self.inputs = {}  # 存储输入框控件引用
         self.config = {}  # 存储配置数据
         self.load_config()
         
-        # 确定当前模式 (当前选中的 Excel 文件)
-        self.current_mode_str = self.config.get("current_mode", "")
-        if not self.current_mode_str and self.excel_files:
-            self.current_mode_str = self.excel_files[0]
-            self.config["current_mode"] = self.current_mode_str
-            
+        # 记录当前模式，用于切换时保存旧数据
+        self.current_mode_str = self.config.get("current_mode", "mode_a")
         self.mode_var = tk.StringVar(value=self.current_mode_str)
 
         # === 字体初始化 (自适应) ===
-        self.base_font_size = 10
+        self.base_font_size = 12
         self.font_base = tkfont.Font(family=CHINESE_FONT, size=self.base_font_size)
         self.font_bold = tkfont.Font(family=CHINESE_FONT, size=self.base_font_size, weight="bold")
         self.font_title = tkfont.Font(family=CHINESE_FONT, size=int(self.base_font_size*1.5), weight="bold")
@@ -158,22 +141,24 @@ class DistillationApp:
         self.create_inputs(self.scrollable_frame)
 
     def create_inputs(self, parent):
-        """创建具体的输入控件"""
-        lbl_title = ttk.Label(parent, text="McCabe-Thiele 参数设置", font=self.font_title, anchor="center")
+        """[子类需修改] 创建具体的输入控件"""
+        lbl_title = ttk.Label(parent, text="参数设置", font=self.font_title, anchor="center")
         lbl_title.pack(fill=tk.X, pady=(0, 20))
         
-        # === 体系选择 (模式切换) ===
-        mode_frame = ttk.LabelFrame(parent, text="体系选择 (Excel文件)", padding=10)
+        # === 模式切换 ===
+        mode_frame = ttk.LabelFrame(parent, text="图表模式", padding=10)
         mode_frame.pack(fill=tk.X, pady=5)
         
-        if not self.excel_files:
-             ttk.Label(mode_frame, text="data目录下未找到.xlsx文件", foreground="red").pack()
-        else:
-            self.combo_mode = ttk.Combobox(mode_frame, values=self.excel_files, textvariable=self.mode_var, state="readonly", font=self.font_bold)
-            self.combo_mode.pack(fill=tk.X, pady=5)
-            self.combo_mode.bind("<<ComboboxSelected>>", self.on_mode_change)
+        rb_a = tk.Radiobutton(mode_frame, text="模式A (椭圆)", variable=self.mode_var, 
+                              value="mode_a", command=self.on_mode_change, font=self.font_bold)
+        rb_a.pack(side=tk.LEFT, padx=10, expand=True)
+        
+        rb_b = tk.Radiobutton(mode_frame, text="模式B (螺旋)", variable=self.mode_var, 
+                              value="mode_b", command=self.on_mode_change, font=self.font_bold)
+        rb_b.pack(side=tk.LEFT, padx=10, expand=True)
 
         # === 动态参数区域 ===
+        # 我们使用一个 Frame 包裹所有会随模式变化的控件
         self.dynamic_input_frame = ttk.Frame(parent)
         self.dynamic_input_frame.pack(fill=tk.X)
         
@@ -188,48 +173,52 @@ class DistillationApp:
                            bg="#4CAF50", fg="white", font=self.font_bold, relief="raised", height=2)
         btn_draw.pack(fill=tk.X, pady=5)
 
-        btn_reset = tk.Button(btn_frame, text="重置当前参数", command=self.reset_params,
+        btn_reset = tk.Button(btn_frame, text="重置参数", command=self.reset_params,
                             font=self.font_base, relief="raised", fg="red")
         btn_reset.pack(fill=tk.X, pady=5)
         
-        lbl_info = ttk.Label(parent, text="说明：\n1. 切换体系会自动保存当前参数。\n2. 确保 data 目录下有 Excel 数据文件。\n3. 所有参数修改后点击生成图表生效。\n4. 中间黑色分割线可以左右拖动调整宽度。", 
+        lbl_info = ttk.Label(parent, text="说明：\n1. 切换模式会自动保存当前参数。\n2. 模式A绘制椭圆，模式B绘制螺旋线。\n3. 中间黑色分割线可以左右拖动调整宽度。", 
                            foreground="gray", justify=tk.LEFT, wraplength=250)
+        # 必须写这一个说明: 说明黑色分割线可以调
         lbl_info.pack(fill=tk.X, pady=20)
 
     def refresh_dynamic_inputs(self):
         """刷新动态输入区域 (重建控件)"""
+        # 清空旧控件
         for widget in self.dynamic_input_frame.winfo_children():
             widget.destroy()
         
+        # 清空 inputs 字典中与动态参数相关的引用，防止内存泄漏或逻辑错误
+        # 注意：这里简单起见，我们重新构建 inputs
+        # 但为了不丢失 Checkbox 等状态，我们需要小心
+        # 在这个示例中，所有输入框都是动态重建的
         self.inputs = {}
         
         current_mode = self.mode_var.get()
-        # 如果当前模式(文件)没有在配置中，则使用默认参数初始化
-        if current_mode not in self.config:
-            self.config[current_mode] = HARDCODED_DEFAULTS["default_params"].copy()
-            
         params = self.config.get(current_mode, {})
 
-        # --- 精馏段 ---
-        group_rect = ttk.LabelFrame(self.dynamic_input_frame, text="精馏段 y=kx+b", padding=10)
-        group_rect.pack(fill=tk.X, pady=5)
-        self.add_input_row(group_rect, "斜率 (k):", "rect_slope", params)
-        self.add_input_row(group_rect, "截距 (b):", "rect_intercept", params)
+        # 参数组 1
+        group1 = ttk.LabelFrame(self.dynamic_input_frame, text="基础参数", padding=10)
+        group1.pack(fill=tk.X, pady=5)
+        
+        self.add_input_row(group1, "图表标题:", "title", params)
+        self.add_input_row(group1, "参数 A:", "param_a", params)
+        self.add_input_row(group1, "参数 B:", "param_b", params)
 
-        # --- 提馏段 ---
-        group_strip = ttk.LabelFrame(self.dynamic_input_frame, text="提馏段 y=kx+b", padding=10)
-        group_strip.pack(fill=tk.X, pady=5)
-        self.add_input_row(group_strip, "斜率 (k):", "strip_slope", params)
-        self.add_input_row(group_strip, "截距 (b):", "strip_intercept", params)
-
-        # --- 组分浓度 ---
-        group_comp = ttk.LabelFrame(self.dynamic_input_frame, text="组分浓度", padding=10)
-        group_comp.pack(fill=tk.X, pady=5)
-        self.add_input_row(group_comp, "xD (塔顶):", "xD", params)
-        self.add_input_row(group_comp, "xF (进料):", "xF", params)
-        self.add_input_row(group_comp, "xW (塔底):", "xW", params)
-
-
+        # 参数组 2
+        group2 = ttk.LabelFrame(self.dynamic_input_frame, text="显示选项", padding=10)
+        group2.pack(fill=tk.X, pady=5)
+        
+        # 处理 int/str 类型转换
+        grid_val = params.get("show_grid", 1)
+        try:
+            grid_val = int(grid_val)
+        except:
+            grid_val = 1
+            
+        self.inputs["show_grid"] = tk.IntVar(value=grid_val)
+        cb = ttk.Checkbutton(group2, text="显示网格", variable=self.inputs["show_grid"])
+        cb.pack(anchor="w")
 
     def add_input_row(self, parent, label_text, key, params_dict):
         """辅助函数：添加一行输入框"""
@@ -247,8 +236,8 @@ class DistillationApp:
         
         self.inputs[key] = entry
 
-    def on_mode_change(self, event=None):
-        """切换体系时的回调"""
+    def on_mode_change(self):
+        """切换模式时的回调"""
         new_mode = self.mode_var.get()
         if new_mode == self.current_mode_str:
             return
@@ -262,12 +251,13 @@ class DistillationApp:
         
         # 3. 刷新 UI (加载新模式参数)
         self.refresh_dynamic_inputs()
+        
+        # 4. 自动重绘
+        # self.plot_graph() # 可选，或者等待用户点击生成
 
     def save_current_params_to_memory(self):
         """将当前 UI 的值保存到 self.config 对应的模式中"""
         mode = self.current_mode_str
-        if not mode: return
-        
         if mode not in self.config:
             self.config[mode] = {}
             
@@ -275,14 +265,17 @@ class DistillationApp:
         for key, widget in self.inputs.items():
             if isinstance(widget, ttk.Entry):
                 target_dict[key] = widget.get()
+            elif isinstance(widget, tk.IntVar):
+                target_dict[key] = widget.get()
 
     def create_plot_area(self):
         """创建右侧绘图区"""
         # 屏幕预览用的低分辨率画布
         self.fig = Figure(figsize=(5, 5), dpi=100)
         self.ax = self.fig.add_axes([0, 0, 1, 1])
-        self.ax.axis('off') 
+        self.ax.axis('off') # 初始关闭坐标轴
         
+        # 显示提示文字
         self.ax.text(0.5, 0.5, "请点击左侧“生成图表”按钮", 
                     ha='center', va='center', fontsize=16, fontproperties=CHINESE_FONT)
         
@@ -296,7 +289,7 @@ class DistillationApp:
 
     def render_and_show(self, temp_fig):
         """将高清图渲染并显示在屏幕上"""
-        # 1. 渲染到缓冲区
+        # 1. 渲染到缓冲区 (Backend Agg)
         canvas = FigureCanvasAgg(temp_fig)
         canvas.draw()
         renderer = canvas.get_renderer()
@@ -305,174 +298,87 @@ class DistillationApp:
         # 2. 转换为 numpy 数组
         buf = np.asarray(raw_data)
         
-        # 3. 在屏幕上显示
+        # 3. 在屏幕上显示 (显示为图像)
         self.ax.clear()
         self.ax.imshow(buf)
-        self.ax.axis('off')
+        self.ax.axis('off') # 关闭坐标轴，因为图像里已经有了
         self.canvas.draw()
         
         # 4. 保存引用以便另存为
         self.generated_fig = temp_fig
 
-    def get_data_from_excel(self, filename_selected):
-        if not filename_selected:
-             return None
-        filename = os.path.join(DATA_DIR, filename_selected)
-        if not os.path.exists(filename):
-            messagebox.showerror("错误", f"未找到文件: {filename_selected}")
-            return None
-        try:
-            return pd.read_excel(filename, header=None, usecols=[0, 1], engine='openpyxl')
-        except Exception as e:
-            messagebox.showerror("错误", f"读取Excel失败:\n{e}")
-            return None
-
     def plot_graph(self):
-        """核心绘图逻辑"""
+        """[子类需修改] 核心绘图/计算逻辑"""
+        # 绘图前先保存当前参数到 config 对象
         self.save_current_params_to_memory()
+        # 然后保存到文件
         self.save_config()
         
+        # 获取当前模式的参数
         mode = self.mode_var.get()
-        if not mode:
-            messagebox.showwarning("提示", "请先选择一个 Excel 文件")
-            return
-
         params = self.config.get(mode, {})
         
         try:
-            k_R = float(params.get("rect_slope", 0))
-            b_R = float(params.get("rect_intercept", 0))
-            k_S = float(params.get("strip_slope", 0))
-            b_S = float(params.get("strip_intercept", 0))
-            
-            x_D = float(params.get("xD", 0))
-            x_F = float(params.get("xF", 0))
-            x_W = float(params.get("xW", 0))
-            
-            fs_scale = float(params.get("plot_font_scale", 2.0))
-            lw_main = float(params.get("lw_main", 1.5))
-            lw_steps = float(params.get("lw_steps", 0.8))
-            lw_vertical = float(params.get("lw_vertical", 0.8))
-            
+            title = params.get("title", "未命名")
+            val_a = float(params.get("param_a", 0))
+            val_b = float(params.get("param_b", 0))
+            show_grid = int(params.get("show_grid", 0))
         except ValueError:
             messagebox.showerror("错误", "请输入有效的数值！")
             return
 
-        # 准备数据
-        f_rect = np.poly1d([k_R, b_R]) 
-        f_strip = np.poly1d([k_S, b_S]) 
-        x_intersect = (b_S - b_R) / (k_R - k_S) if (k_R != k_S) else x_F 
-
-        df = self.get_data_from_excel(mode)
-        if df is None: return
-        
-        curve_x_raw, curve_y_raw = df.iloc[:, 0].dropna().values, df.iloc[:, 1].dropna().values
-        sort_idx = np.argsort(curve_x_raw)
-        curve_x, curve_y = curve_x_raw[sort_idx], curve_y_raw[sort_idx]
-        f_curve_y_to_x = interp1d(curve_y, curve_x, kind='cubic', fill_value="extrapolate")
-
-        # 阶梯计算
-        steps_x, steps_y = [], []
-        current_x, current_y = x_D, x_D
-        steps_x.append(current_x); steps_y.append(current_y)
-        count = 0
-        max_steps = 100
-        while count < max_steps:
-            next_x = float(f_curve_y_to_x(current_y))
-            steps_x.append(next_x); steps_y.append(current_y)
-            if next_x < x_W:
-                steps_x.append(next_x); steps_y.append(next_x); break
-            
-            current_x = next_x
-            if current_x > x_intersect:
-                next_y = f_rect(current_x) 
-            else:
-                next_y = f_strip(current_x) 
-            
-            steps_x.append(current_x); steps_y.append(next_y)
-            current_y = next_y
-            count += 1
-
-        # === 创建高清绘图对象 ===
+        # 创建高清绘图对象 (离屏)
         w_inch = IMG_WIDTH / IMG_DPI
         h_inch = IMG_HEIGHT / IMG_DPI
         temp_fig = Figure(figsize=(w_inch, h_inch), dpi=IMG_DPI)
+        # 注意：使用 add_subplot(111) 会有默认边距，如果想要精确控制像素，可以使用 add_axes
+        # 这里为了简单展示图表，使用 subplot 即可，但如果要做精确工程图，建议用 add_axes([0.1, 0.1, 0.8, 0.8])
         ax_temp = temp_fig.add_subplot(111)
-        temp_fig.subplots_adjust(left=0.08, right=0.95, top=0.92, bottom=0.08)
 
-        # 绘图样式
-        ax_temp.set_xlim(0, 1)
-        ax_temp.set_ylim(0, 1)
-        ax_temp.set_aspect('equal', adjustable='box') 
-        ax_temp.tick_params(direction='in', top=True, right=True, width=lw_vertical, labelsize=10 * fs_scale)
-        for spine in ax_temp.spines.values():
-            spine.set_linewidth(lw_main)
-        ax_temp.set_xlabel("x", fontsize=12 * fs_scale, labelpad=10 * fs_scale)
-        ax_temp.set_ylabel("y", fontsize=12 * fs_scale, rotation=0, labelpad=10 * fs_scale)
-        
-        # 绘制 45 度对角线
-        ax_temp.plot([0, 1], [0, 1], color='black', linewidth=lw_main)
-        
-        # 绘制平衡曲线
-        x_range = np.linspace(0, 1, 200)
-        ax_temp.plot(x_range, interp1d(curve_x, curve_y, kind='cubic', fill_value="extrapolate")(x_range), 
-                    color='black', linewidth=lw_main, label='平衡曲线')
-        
-        # 绘制原始数据点
-        ax_temp.plot(curve_x_raw, curve_y_raw, 'ro', markersize=4 * fs_scale, label='原始数据点')
-        
-        # 绘制操作线
-        ax_temp.plot([x_intersect, x_D], f_rect([x_intersect, x_D]), color='blue', linewidth=lw_main, label='精馏操作线')
-        ax_temp.plot([x_W, x_intersect], f_strip([x_W, x_intersect]), color='#00FF00', linewidth=lw_main, label='提馏操作线')
-        
-        # 绘制 q 线
-        y_intersect = f_rect(x_intersect)
-        q_line_k = (y_intersect - x_F) / (x_intersect - x_F) if x_intersect != x_F else 1
-        q_line_b = y_intersect - q_line_k * x_intersect
-        f_q = np.poly1d([q_line_k, q_line_b])
-        ax_temp.plot([x_F, x_intersect], f_q([x_F, x_intersect]), color='green', linestyle='-', linewidth=lw_main)
-        ax_temp.text(x_F + 0.01, x_F + 0.01, 'q', fontsize=10 * fs_scale, color='green') 
+        if mode == "mode_a":
+            # 模式 A: 椭圆
+            t = np.linspace(0, 2*np.pi, 100)
+            x = val_a * np.cos(t)
+            y = val_b * np.sin(t)
+            ax_temp.plot(x, y, label=f'椭圆 (A={val_a}, B={val_b})', color='blue')
+            
+        elif mode == "mode_b":
+            # 模式 B: 螺旋线
+            # param_a 控制圈数，param_b 控制间距
+            t = np.linspace(0, val_a * 2 * np.pi, 500)
+            r = val_b * t
+            x = r * np.cos(t)
+            y = r * np.sin(t)
+            ax_temp.plot(x, y, label=f'螺旋 (圈数={val_a}, 间距={val_b})', color='red')
 
-        # 绘制垂直线
-        for val, text in zip([x_D, x_F, x_W], [r'$x_D$', r'$x_F$', r'$x_W$']):
-            ax_temp.plot([val, val], [0, 1], color='black', linestyle=':', linewidth=lw_vertical)
-            ax_temp.text(val, -0.06, text, ha='center', fontsize=12 * fs_scale, color='black')
-
-        # 绘制阶梯
-        ax_temp.plot(steps_x, steps_y, color='black', linewidth=lw_steps)
+        ax_temp.set_title(title, fontproperties=CHINESE_FONT, fontsize=24) # 高清图字体要大一些
         
-        # 绘制交点
-        for i in range(len(steps_x)-1):
-            ax_temp.plot(steps_x[i], steps_y[i], 'k.', markersize=4 * fs_scale) 
+        if show_grid:
+            ax_temp.grid(True, linestyle='--', alpha=0.6)
+            
+        ax_temp.legend(prop={'family': CHINESE_FONT, 'size': 8}, loc='upper right')
+        ax_temp.axis('equal')
 
-        title_text = f"McCabe-Thiele Diagram\nTheoretical Plates: {count}"
-        ax_temp.set_title(title_text, fontsize=14 * fs_scale, fontweight='bold', pad=15 * fs_scale)
-        ax_temp.legend(loc='upper left', fontsize=8 * fs_scale)
-
+        # 渲染并显示
         self.render_and_show(temp_fig)
 
     def load_config(self):
-        """加载配置"""
+        """加载配置：优先读取 config.json，其次 default_config.json，最后硬编码"""
         self.config = HARDCODED_DEFAULTS.copy()
         
-        # 读取默认配置 (example.json)
         if os.path.exists(DEFAULT_CONFIG_FILE):
             try:
                 with open(DEFAULT_CONFIG_FILE, 'r', encoding='utf-8') as f:
                     defaults = json.load(f)
-                    # 尝试将旧版格式转换为新版格式 (如果 needed)
-                    # 这里假设 example.json 已经是我们想要的格式，或者我们只是简单的 merge
-                    # 由于旧版 example.json 是扁平的，我们需要做适配
-                    if "rect_slope" in defaults:
-                        # 旧版格式，适配一下
-                        filename = defaults.get("system_selection", "default.xlsx")
-                        self.config[filename] = defaults
-                    else:
-                        self.config.update(defaults)
+                    # 深度合并 (简单版)
+                    for k, v in defaults.items():
+                        if isinstance(v, dict) and k in self.config:
+                            self.config[k].update(v)
+                        else:
+                            self.config[k] = v
             except Exception as e:
                 print(f"读取默认配置失败: {e}")
 
-        # 读取用户配置
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -487,7 +393,9 @@ class DistillationApp:
                 print(f"读取用户配置失败: {e}")
 
     def save_config(self):
-        """保存配置"""
+        """保存配置到 config.json"""
+        # 注意：self.config 应该在 save_current_params_to_memory 中已经更新了
+        # 这里只需写入文件
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
@@ -495,14 +403,28 @@ class DistillationApp:
             print(f"保存配置失败: {e}")
 
     def reset_params(self):
-        """重置当前模式参数"""
-        if messagebox.askyesno("确认", "确定要重置当前参数吗？"):
-            current_mode = self.mode_var.get()
-            self.config[current_mode] = HARDCODED_DEFAULTS["default_params"].copy()
+        """重置参数：重新加载默认配置"""
+        if messagebox.askyesno("确认", "确定要重置为默认参数吗？"):
+            # 重新从 default_config.json 加载
+            self.config = HARDCODED_DEFAULTS.copy()
+            if os.path.exists(DEFAULT_CONFIG_FILE):
+                try:
+                    with open(DEFAULT_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        defaults = json.load(f)
+                        for k, v in defaults.items():
+                            if isinstance(v, dict) and k in self.config:
+                                self.config[k].update(v)
+                            else:
+                                self.config[k] = v
+                except Exception as e:
+                    print(f"读取默认配置失败: {e}")
             
-            # 如果 example.json 中有相关配置，也可以尝试从那里恢复
-            # 这里简单起见，恢复到硬编码默认值
+            # 恢复当前模式
+            current_mode = self.config.get("current_mode", "mode_a")
+            self.mode_var.set(current_mode)
+            self.current_mode_str = current_mode
             
+            # 刷新界面
             self.refresh_dynamic_inputs()
             self.plot_graph()
 
@@ -512,14 +434,17 @@ class DistillationApp:
             defaultextension=".png",
             filetypes=[("PNG图片", "*.png"), ("JPG图片", "*.jpg"), ("PDF文档", "*.pdf")],
             title="保存图表",
-            initialfile="理论板数图解.png"
+            initialfile="示例图表.png"
         )
         if file_path:
             try:
                 if self.generated_fig:
+                    # 使用已生成的高清图保存
                     self.generated_fig.savefig(file_path, dpi=IMG_DPI, bbox_inches='tight')
                 else:
+                    # 如果还没生成，就保存当前的预览图 (fallback)
                     self.fig.savefig(file_path, dpi=300, bbox_inches='tight')
+                    
                 messagebox.showinfo("成功", f"已保存至：{file_path}")
             except Exception as e:
                 messagebox.showerror("失败", f"保存失败：{e}")
@@ -543,5 +468,5 @@ class DistillationApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = DistillationApp(root)
+    app = StandardApp(root)
     root.mainloop()

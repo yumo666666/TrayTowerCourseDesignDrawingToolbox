@@ -1,5 +1,5 @@
 {
-    "plate_type": "浮阀塔",
+    "current_mode": "筛板塔",
     "浮阀塔": {
         "mist_carry_FL_A": "-51.820977",
         "mist_carry_FL_B": "4.484449735",
@@ -25,5 +25,6 @@
         "Ls_min_SL": "0.00056",
         "op_Vs_SL": "0.621",
         "op_Ls_SL": "0.0017"
-    }
+    },
+    "plate_type": "筛板塔"
 }

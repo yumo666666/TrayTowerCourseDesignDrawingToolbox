@@ -45,7 +45,7 @@ if exist requirement.txt (
 
 :: 执行打包
 echo [INFO] 开始打包教师版...
-pyinstaller --noconfirm --onefile --windowed ^
+pyinstaller --noconfirm -F -w -i "icon.ico" ^
     --name "板式塔课设工具箱_教师版" ^
     --add-data "apps;apps" ^
     --add-data "features;features" ^

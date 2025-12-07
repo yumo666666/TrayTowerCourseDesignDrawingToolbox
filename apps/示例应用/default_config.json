@@ -1,0 +1,15 @@
+{
+    "current_mode": "mode_a",
+    "mode_a": {
+        "title": "模式A - 椭圆",
+        "param_a": "100",
+        "param_b": "50",
+        "show_grid": "1"
+    },
+    "mode_b": {
+        "title": "模式B - 螺旋线",
+        "param_a": "10",
+        "param_b": "2",
+        "show_grid": "1"
+    }
+}
